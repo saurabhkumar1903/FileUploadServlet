@@ -12,7 +12,18 @@ import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.fileupload.FileItem;
 import org.apache.commons.fileupload.disk.DiskFileItemFactory;
 import org.apache.commons.fileupload.servlet.ServletFileUpload;
-
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 /**
  * A Java servlet that handles file upload from client.
  * 
@@ -83,9 +94,40 @@ public class FileUploadServlet extends HttpServlet {
 						String fileName = new File(item.getName()).getName();
 						String filePath = uploadPath + File.separator + fileName;
 						File storeFile = new File(filePath);
-							System.out.println(storeFile+"");
+						System.out.println("File location: "+storeFile+"");
 						// saves the file on disk
 						item.write(storeFile);
+						String temp_path=storeFile+"";
+						Configuration conf = new Configuration();
+					    // Replace CallJobFromServlet.class name with your servlet class
+					        Job job = new Job(conf, " CallJobFromServlet.class"); 
+					        job.setJarByClass(FileUploadServlet.class);
+					        job.setJobName("Job Name");
+					        job.setOutputKeyClass(Text.class);
+					        job.setOutputValueClass(Text.class);
+					        job.setMapperClass(MapForWordCount.class); // Replace Map.class name with your Mapper class
+					        job.setReducerClass(ReduceForWordCount.class); //Replace Reduce.class name with your Reducer class
+					        job.setMapOutputKeyClass(Text.class);
+					        job.setMapOutputValueClass(IntWritable.class);
+					        job.setInputFormatClass(TextInputFormat.class);
+					        job.setOutputFormatClass(TextOutputFormat.class);
+
+					        // Job Input path
+					        FileInputFormat.addInputPath(job, new  Path(temp_path)); 
+					        // Job Output path
+					        FileOutputFormat.setOutputPath(job, new 
+					        Path("/home/hadoopuser/Desktop/output")); 
+
+					        try {
+								job.waitForCompletion(true);
+							} catch (ClassNotFoundException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							} catch (InterruptedException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+						
 						request.setAttribute("message",
 							"Upload has been done successfully!");
 					}
@@ -99,4 +141,32 @@ public class FileUploadServlet extends HttpServlet {
 		getServletContext().getRequestDispatcher("/message.jsp").forward(
 				request, response);
 	}
+
+	  public static class MapForWordCount extends Mapper<LongWritable, Text, Text, IntWritable>{
+	    	public void map(LongWritable key, Text value, Context con) throws IOException, InterruptedException
+	    	{
+	    	String line = value.toString();
+	    	String[] words=line.split(",");
+	    	for(String word: words )
+	    	{
+	    	      Text outputKey = new Text(word.toUpperCase().trim());
+	    	  IntWritable outputValue = new IntWritable(1);
+	    	  con.write(outputKey, outputValue);
+	    	}
+	    	}
+	    	}
+	    	public static class ReduceForWordCount extends Reducer<Text, IntWritable, Text, IntWritable>
+	    	{
+	    	public void reduce(Text word, Iterable<IntWritable> values, Context con) throws IOException, InterruptedException
+	    	{
+	    	int sum = 0;
+	    	   for(IntWritable value : values)
+	    	   {
+	    	   sum += value.get();
+	    	   }
+	    	   con.write(word, new IntWritable(sum));
+	    	}
+	    	}
+
 }
+
